@@ -50,15 +50,10 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramNetworkError
 
-# ============================================
-# ⚠️ НАСТРОЙКИ (ЗАМЕНИТЕ НА СВОИ)
-# ============================================
-# 1. ПОЛУЧИТЕ НОВЫЙ ТОКЕН В @BotFather (ОТОЗВИТЕ СТАРЫЙ!)
+
 BOT_TOKEN = "8424921945:AAEJda5h4a1Na1W9kfJbNbFOElejUZdU91k"
 
-# 2. ВАШ ЧИСЛОВОЙ TELEGRAM ID (узнайте у @userinfobot)
 ADMIN_ID = 6877594405
-# ============================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
