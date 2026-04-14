@@ -3,11 +3,13 @@ import subprocess
 import sys
 import importlib
 import logging
+import re
 from datetime import datetime
 
 # Включаем логирование для отладки
 logging.basicConfig(level=logging.INFO)
 
+# Список библиотек с желаемыми версиями (None = последняя версия)
 required_packages = {
     'aiogram': '3.15.0',
     'requests': None,
@@ -48,15 +50,58 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramNetworkError
 
+# ============================================
+# ⚠️ НАСТРОЙКИ (ЗАМЕНИТЕ НА СВОИ)
+# ============================================
+# 1. ПОЛУЧИТЕ НОВЫЙ ТОКЕН В @BotFather (ОТОЗВИТЕ СТАРЫЙ!)
+BOT_TOKEN = "8424921945:AAEJda5h4a1Na1W9kfJbNbFOElejUZdU91k"
 
-BOT_TOKEN = "8424921945:AAEJda5h4a1Na1W9kfJbNbFOElejUZdU91k" 
-
-
+# 2. ВАШ ЧИСЛОВОЙ TELEGRAM ID (узнайте у @userinfobot)
 ADMIN_ID = 6877594405
 # ============================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+def extract_user_id_from_text(text: str) -> int:
+    """
+    Извлекает ID пользователя из текста сообщения.
+    Поддерживает различные форматы:
+    - `123456789`
+    - ID: 123456789
+    - 🆔 ID: 123456789
+    - От 123456789:
+    - Пользователь: 123456789
+    """
+    if not text:
+        return None
+    
+    # Способ 1: ID в обратных кавычках `123456789`
+    match = re.search(r'`(\d{5,})`', text)
+    if match:
+        return int(match.group(1))
+    
+    # Способ 2: ID после "ID:" или "🆔 ID:"
+    match = re.search(r'ID:\s*`?(\d{5,})`?', text)
+    if match:
+        return int(match.group(1))
+    
+    # Способ 3: ID после "От "
+    match = re.search(r'От\s+(\d{5,})', text)
+    if match:
+        return int(match.group(1))
+    
+    # Способ 4: ID после "Пользователь:"
+    match = re.search(r'Пользователь:\s*`?(\d{5,})`?', text)
+    if match:
+        return int(match.group(1))
+    
+    # Способ 5: любое число из 5-10 цифр (последний шанс)
+    matches = re.findall(r'\b(\d{5,10})\b', text)
+    if matches:
+        return int(matches[0])
+    
+    return None
 
 # Обработчик команды /start
 @dp.message(Command("start"))
@@ -85,14 +130,14 @@ async def forward_to_admin(message: types.Message):
     username = message.from_user.username or "без username"
     first_name = message.from_user.first_name or "без имени"
     
-    # Игнорируем команду /start (она уже обработана выше)
+    # Игнорируем команду /start
     if message.text and message.text.startswith("/start"):
         return
     
     try:
         # Если сообщение от обычного пользователя (НЕ админа)
         if user_id != ADMIN_ID:
-            # Пересылаем сообщение админу с подробной информацией
+            # Пересылаем сообщение админу
             await bot.send_message(
                 ADMIN_ID,
                 f"📩 **Новое сообщение в поддержку**\n\n"
@@ -101,47 +146,28 @@ async def forward_to_admin(message: types.Message):
                 f"📛 **Username:** @{username}\n"
                 f"🕐 **Время:** {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n\n"
                 f"💬 **Текст сообщения:**\n"
-                f"\"{message.text}\"\n\n"
+                f"{message.text}\n\n"
                 f"➡️ *Чтобы ответить, нажмите Reply на это сообщение*",
                 parse_mode="Markdown"
             )
             
-            # Подтверждаем пользователю, что сообщение получено
+            # Подтверждаем пользователю
             await message.answer(
                 "✅ **Ваше сообщение отправлено в поддержку!**\n\n"
                 "Ответ придёт сюда в этот чат. Ожидайте.",
                 parse_mode="Markdown"
             )
             
-            # Логируем в консоль
-            print(f"📨 Получено сообщение от {first_name} (ID: {user_id}): {message.text[:50]}...")
+            print(f"📨 Получено сообщение от {first_name} (ID: {user_id})")
         
         # Если сообщение от админа
         else:
-            # Если админ отвечает на пересланное сообщение
+            # Если админ отвечает на сообщение
             if message.reply_to_message and message.reply_to_message.text:
-                text = message.reply_to_message.text
+                reply_text = message.reply_to_message.text
                 
-                # Ищем ID в формате "ID: `123456789`" или "От 123456789:"
-                target_id = None
-                
-                # Способ 1: из Markdown формата "ID: `123456789`"
-                if "ID: `" in text:
-                    try:
-                        id_start = text.find("ID: `") + 5
-                        id_end = text.find("`", id_start)
-                        target_id = int(text[id_start:id_end])
-                    except (ValueError, IndexError):
-                        pass
-                
-                # Способ 2: из старого формата "📩 От 123456789:"
-                if target_id is None and "От " in text and ":\n" in text:
-                    try:
-                        user_id_start = text.find("От ") + 3
-                        user_id_end = text.find(":\n")
-                        target_id = int(text[user_id_start:user_id_end])
-                    except (ValueError, IndexError):
-                        pass
+                # Извлекаем ID пользователя из текста
+                target_id = extract_user_id_from_text(reply_text)
                 
                 if target_id:
                     # Отправляем ответ пользователю
@@ -155,13 +181,21 @@ async def forward_to_admin(message: types.Message):
                     )
                     
                     # Подтверждаем админу
-                    await message.answer(f"✅ Ответ успешно отправлен пользователю `{target_id}`", parse_mode="Markdown")
-                    print(f"✉️ Ответ отправлен пользователю {target_id}: {message.text[:50]}...")
+                    await message.answer(
+                        f"✅ **Ответ успешно отправлен пользователю**\n"
+                        f"🆔 ID: `{target_id}`",
+                        parse_mode="Markdown"
+                    )
+                    print(f"✉️ Ответ отправлен пользователю {target_id}")
                 else:
+                    # Не удалось найти ID
                     await message.answer(
                         "❌ **Не удалось определить ID пользователя.**\n\n"
                         "Убедитесь, что вы отвечаете (Reply) на сообщение, которое бот прислал вам от пользователя.\n\n"
-                        "Формат сообщения должен содержать строку `ID: ` или `От `",
+                        f"**Текст сообщения, на которое вы ответили:**\n"
+                        f"```\n{reply_text[:200]}\n```\n\n"
+                        f"Если проблема повторяется, отправьте ID пользователя вручную:\n"
+                        f"`/reply 123456789 Ваш ответ`",
                         parse_mode="Markdown"
                     )
             else:
@@ -178,7 +212,49 @@ async def forward_to_admin(message: types.Message):
         await asyncio.sleep(5)
     except Exception as e:
         print(f"⚠️ Неожиданная ошибка: {e}")
-        await message.answer(f"❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
+        try:
+            await message.answer(f"❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
+        except:
+            pass
+
+# Обработчик команды /reply (ручной ввод ID)
+@dp.message(Command("reply"))
+async def manual_reply(message: types.Message):
+    """Ручной ответ пользователю: /reply 123456789 текст ответа"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет прав для этой команды.")
+        return
+    
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        await message.answer(
+            "❌ **Неверный формат команды.**\n\n"
+            "Использование:\n"
+            "`/reply 123456789 Ваш ответ`\n\n"
+            "Где `123456789` — ID пользователя",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        target_id = int(parts[1])
+        reply_text = parts[2]
+        
+        await bot.send_message(
+            target_id,
+            f"📢 **Ответ от службы поддержки DefenderNet:**\n\n"
+            f"{reply_text}\n\n"
+            f"---\n"
+            f"_Если ваш вопрос решён, просто проигнорируйте это сообщение._",
+            parse_mode="Markdown"
+        )
+        
+        await message.answer(f"✅ Ответ успешно отправлен пользователю `{target_id}`", parse_mode="Markdown")
+        print(f"✉️ Ручной ответ отправлен пользователю {target_id}")
+    except ValueError:
+        await message.answer("❌ ID пользователя должен быть числом.", parse_mode="Markdown")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при отправке: {e}")
 
 async def main():
     print("=" * 60)
@@ -192,6 +268,9 @@ async def main():
     print("   2. Вам приходит сообщение с ID пользователя")
     print("   3. Нажмите 'Ответить' (Reply) и напишите ответ")
     print("   4. Бот отправит ответ пользователю от своего имени")
+    print("")
+    print("📌 Альтернативный способ (если Reply не работает):")
+    print("   /reply 123456789 Текст ответа")
     print("=" * 60)
     print("🟢 Бот готов к работе...")
     print("")
